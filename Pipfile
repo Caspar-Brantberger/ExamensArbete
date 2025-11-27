@@ -4,10 +4,11 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-fastapi = "*"
 unicorn = "*"
-uvicorn = "*"
 sqlalchemy = "*"
+fastapi = "*"
+uvicorn = "*"
+python-dotenv = "*"
 
 [dev-packages]
 

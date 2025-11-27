@@ -1,3 +1,4 @@
+import base64
 from fastapi import FastAPI,Depends,HTTPException, Header, HTTPException, Request, Path
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -8,16 +9,18 @@ from app.models.associations import nurse_shift
 from app.schemas import ShiftSchema
 from app.schemas import NurseWithShiftsSchema
 from app.schemas import NurseBaseSchema
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import jwt
 from dotenv import load_dotenv
 import os
-from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
 
 app = FastAPI()
+
+load_dotenv()
+
 
 @app.get("/")
 async def root():
@@ -62,32 +65,35 @@ def get_all_nurses(db: Session = Depends(get_db)):
     return [NurseBaseSchema.from_orm(s) for s in nurses]
 
 
-load_dotenv()
 
-app = FastAPI()
 
-SECRET_KEY = os.getenv("JWT_SECRET")
+SECRET_KEY = base64.b64decode(os.getenv("ISSUER_SECRET"))
 ALGORITHM = "HS512"
 
 print(f"=== FastAPI Starting ===")
 print(f"Algorithm: {ALGORITHM}")
 print(f"SECRET_KEY loaded: {'YES' if SECRET_KEY else 'NO'}")
+print("SECRET_KEY =", repr(SECRET_KEY))
 
 
 class NurseInfo(BaseModel):
-    nurse_id: str
+    nurse_id: str = Field(..., alias="nurseId")
     name: str
     specialization: str
-    experience_years: int
+    experience_years: int = Field(..., alias="experienceYears")
+
+    model_config = dict(populate_by_name=True)
 
 
 class Shift(BaseModel):
-    shift_id: str
-    hospital_id: str
-    start_time: str
-    end_time: str
+    shift_id: str = Field(..., alias="shiftId")
+    hospital_id: str = Field(..., alias="hospitalId")
+    start_time: str = Field(..., alias="startTime")
+    end_time: str = Field(..., alias="endTime")
     department: str
-    required_specialization: str
+    required_specialization: str = Field(..., alias="requiredSpecialization")
+
+    model_config = dict(populate_by_name=True)
 
 
 class RecommendationRequest(BaseModel):
@@ -150,20 +156,17 @@ def recommend_post(
     )
 
 
-@app.get("/recommend/{nurse_id}", response_model=RecommendationResponse)
+@app.get("/recommend/{nurseid}", response_model=RecommendationResponse)
 def recommend_get(
-    nurse_id: str = Path(..., description="The nurse ID"),
-    authorization: str = Header(None)
+    nurseid: str = Path(..., description="The nurse ID"),
+    authorization: str = Header(None, alias="Authorization")
 ):
-    """GET endpoint - Simple nurse ID lookup"""
     token_payload = verify_token(authorization)
     
-    print(f"\n=== GET /recommend/{nurse_id} ===")
-    print(f"Looking up recommendations for nurse: {nurse_id}")
+    print(f"\n=== GET /recommend/{nurseid} ===")
+    print(f"Looking up recommendations for nurse: {nurseid}")
     
-    # Your lookup logic here
-    # For now, returning mock data
     return RecommendationResponse(
         shift_ids=["shift-1", "shift-2", "shift-3"],
-        received_nurse=nurse_id
+        received_nurse=nurseid
     )
