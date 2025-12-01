@@ -8,6 +8,12 @@ from app.models.associations import nurse_shift
 from app.schemas import ShiftSchema
 from app.schemas import NurseWithShiftsSchema
 from app.schemas import NurseBaseSchema
+from app.ML.inference.score_shifts import score_shifts
+import pandas as pd
+import inspect
+from typing import Any
+
+
 
 
 
@@ -55,5 +61,44 @@ def get_all_nurses(db: Session = Depends(get_db)):
     nurses = db.query(Nurse).all()
     return [NurseBaseSchema.from_orm(s) for s in nurses]
 
+@app.get("/score-shifts/{nurse_id}")
+def debug_shifts(nurse_id: UUID, db: Session = Depends(get_db)):
+    nurse = db.query(Nurse).filter(Nurse.id == nurse_id).first()
+    if not nurse:
+        raise HTTPException(status_code=404, detail="Nurse not found")
+
+    shifts = db.query(ShiftAdvertisement).limit(5).all()
+    if not shifts:
+        return {"message": "No shifts in DB"}
+
+    def safe_serialize(val: Any):
+        try:
+            return str(val)
+        except Exception:
+            return f"<unserializable {type(val).__name__}>"
+
+    rows = []
+    for i, s in enumerate(shifts):
+        attrs = sorted(set([a for a in dir(s) if not a.startswith("_")]))
+        dict_keys = list(getattr(s, "__dict__", {}).keys())
+        sample = {}
+        common_names = ['id','start_datetime','start_time','start','shift_start_date','shift_start',
+                        'end_datetime','end_time','end','shift_end_date','shift_end',
+                        'specialization','specialization_norm','location','location_norm',
+                        'lat','lng','latitude','longitude','shift_type','experience','nr_of_pos','hospital_id']
+        for name in common_names:
+            if hasattr(s, name):
+                sample[name] = safe_serialize(getattr(s, name))
+
+        rows.append({
+            "index": i,
+            "repr": safe_serialize(s),
+            "dir_attrs_count": len(attrs),
+            "dir_sample": attrs[:40],
+            "dict_keys": dict_keys,
+            "common_sample_values": sample
+        })
+
+    return {"count_sample": len(rows), "rows": rows}
 
 
