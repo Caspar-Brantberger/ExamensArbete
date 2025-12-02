@@ -1,176 +1,195 @@
 import pandas as pd
 import numpy as np
-import joblib
+import ast
+from datetime import datetime
+from sqlalchemy import create_engine
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_score
+import lightgbm as lgb
+from geopy.distance import geodesic
 
-# -----------------------------
-# 0️⃣ Example synthetic nurses and shifts
-# -----------------------------
-# NOTE: This is temporary example data for training the model.
-# In production, replace this with real data from your nurse and shift tables.
-nurses_df = pd.DataFrame({
-    'nurse_id': [f'n{i}' for i in range(1,6)],
-    'specialization': ['Läkare','Sjuksköterska','Sjuksköterska','Arbetsterapeut','Läkare'],
-    'base_location_norm': ['Söderstad','Söderstad','Nysås','Nysås','Söderstad'],
-    'role_id': ['R1','R2','R2','R3','R1'],
-    'date_of_birth': ['1990-01-01','1992-03-12','1988-07-23','1995-11-05','1990-01-01']
-})
+# =========================
+# 0. Notes for real data usage
+# =========================
+"""
+This script is a prototype for training a LightGBM model to predict nurse-shift matching scores.
+Currently, it uses synthetic or placeholder data for development purposes.
 
-shifts_df = pd.DataFrame({
-    'unique_shift_id': [f's{i}' for i in range(1,6)],
-    'specialization_norm': ['Läkare','Sjuksköterska','Sjuksköterska','Arbetsterapeut','Läkare'],
-    'location_norm': ['Söderstad','Söderstad','Nysås','Nysås','Söderstad'],
-    'shift_start_date': pd.date_range('2025-12-01 08:00', periods=5, freq='h'),
-    'shift_end_date': pd.date_range('2025-12-01 16:00', periods=5, freq='h'),
-    'shift_type': ['DAY','NIGHT','DAY','DAY','NIGHT']
-})
+When using real data, make sure to update:
 
-# -----------------------------
-# 1️⃣ Create all possible nurse-shift pairs
-# -----------------------------
+1. Database connection:
+- Replace 'database', 'USERNAME', 'PASSWORD' with your actual PostgreSQL credentials.
+    Example:
+    engine = create_engine("postgresql://USERNAME:PASSWORD@HOST:PORT/DATABASE")
+
+2. Table names:
+- Ensure tables exist: shift_advertisement, nurse, nurse_shift
+- Adjust SQL queries if your schema differs
+
+3. Placeholder values:
+- Lat/lng, experience, lead_time, hourly rates, hospital familiarity, etc. are random.
+- Replace with real values or computed features from your historical data
+
+4. Target:
+- Currently random (0/1)
+- Replace with your real label (e.g., whether nurse accepted the shift or historical match score)
+
+5. Categorical features:
+- Using LightGBM categorical encoding (.astype('category').cat.codes)
+- Adjust as needed for real data (LightGBM supports categories directly)
+
+6. Other synthetic features:
+- total_shifts_completed, avg_distance_accepted, night_shift_preference, hospital familiarity
+- Replace with historical metrics if available
+"""
+
+# =========================
+# 1. Load data from database
+# =========================
+# Replace with your actual credentials
+engine = create_engine("postgresql://USERNAME:PASSWORD@localhost:5432/DATABASE")
+
+shifts = pd.read_sql("SELECT * FROM shift_advertisement", engine)
+nurses = pd.read_sql("SELECT * FROM nurse", engine)
+nurse_shifts = pd.read_sql("SELECT * FROM nurse_shift", engine)
+
+# =========================
+# 2. Preprocess nurses and shifts
+# =========================
+today = pd.Timestamp('2025-12-01')
+nurses['date_of_birth'] = pd.to_datetime(nurses['date_of_birth'], errors='coerce')
+nurses['age'] = ((today - nurses['date_of_birth']).dt.days // 365).fillna(30).astype(int)
+
+# Lat/lng - placeholder values
+shifts['lat'] = shifts['lat'].fillna(pd.Series(np.random.uniform(55.3, 69.1, len(shifts)), index=shifts.index))
+shifts['lng'] = shifts['lng'].fillna(pd.Series(np.random.uniform(11.1, 24.2, len(shifts)), index=shifts.index))
+
+# Nurses base location - placeholder
+nurses['base_lat'] = np.random.uniform(55.3, 69.1, len(nurses))
+nurses['base_lng'] = np.random.uniform(11.1, 24.2, len(nurses))
+
+# Preferred locations as list
+nurses['preferred_locations'] = nurses.get('preferred_locations', '[]')
+def safe_literal_eval(x):
+    if isinstance(x, str):
+        try:
+            return ast.literal_eval(x)
+        except Exception:
+            return []
+    elif isinstance(x, list):
+        return x
+    else:
+        return []
+nurses['preferred_locations'] = nurses['preferred_locations'].apply(safe_literal_eval)
+
+# Synthetic historical/aggregated fields - replace with real metrics
+nurses['total_shifts_completed'] = np.random.randint(0, 100, len(nurses))
+nurses['avg_distance_accepted'] = np.random.uniform(0, 200, len(nurses))
+nurses['night_shift_preference'] = np.random.uniform(0, 1, len(nurses))
+nurses['avg_hourly_rate_accepted'] = np.random.uniform(200, 600, len(nurses))
+
+# Hospital familiarity: simulated as random integers - replace with real history
+hospital_ids = shifts['hospital_id'].unique()
+for hid in hospital_ids:
+    nurses[f'hospital_{hid}_familiarity'] = np.random.randint(0, 10, len(nurses))
+
+# =========================
+# 3. Merge historical nurse-shift data if available
+# =========================
+if not nurse_shifts.empty:
+    # Average distance accepted
+    if 'distance_km' in nurse_shifts.columns:
+        avg_dist = nurse_shifts.groupby('nurse_id')['distance_km'].mean().rename('avg_distance_accepted')
+        nurses = nurses.merge(avg_dist, left_on='id', right_index=True, how='left')
+        nurses['avg_distance_accepted'] = nurses['avg_distance_accepted'].fillna(np.random.uniform(0,200,len(nurses)))
+    # Night shift preference
+    if 'is_night_shift' in nurse_shifts.columns:
+        night_pref = nurse_shifts.groupby('nurse_id')['is_night_shift'].mean().rename('night_shift_preference')
+        nurses = nurses.merge(night_pref, left_on='id', right_index=True, how='left')
+        nurses['night_shift_preference'] = nurses['night_shift_preference'].fillna(np.random.uniform(0,1,len(nurses)))
+    # Avg hourly rate
+    if 'hourly_rate' in nurse_shifts.columns:
+        avg_rate = nurse_shifts.groupby('nurse_id')['hourly_rate'].mean().rename('avg_hourly_rate_accepted')
+        nurses = nurses.merge(avg_rate, left_on='id', right_index=True, how='left')
+        nurses['avg_hourly_rate_accepted'] = nurses['avg_hourly_rate_accepted'].fillna(np.random.uniform(200,600,len(nurses)))
+
+# =========================
+# 4. Expand nurse-shift pairs
+# =========================
 pairs = pd.merge(
-    nurses_df.assign(key=1),
-    shifts_df.assign(key=1),
-    on='key'
-).drop('key', axis=1)
-
-# -----------------------------
-# 2️⃣ Create labels (temporary)
-# -----------------------------
-# Currently using simple rules to define matches.
-# FUTURE: Replace this with historical application/completed shift data.
-pairs['spec_match'] = (pairs['specialization'] == pairs['specialization_norm']).astype(int)
-pairs['location_match'] = (pairs['base_location_norm'] == pairs['location_norm']).astype(int)
-pairs['role_match'] = (pairs['role_id'] == 'R1').astype(int)  # TEMP: placeholder logic
-pairs['label'] = ((pairs['spec_match']==1) & (pairs['location_match']==1) & (pairs['role_match']==1)).astype(int)
-
-# -----------------------------
-# Balance dataset: max 3x negatives per positive
-# -----------------------------
-positives = pairs[pairs['label']==1]
-neg_count = min(len(pairs[pairs['label']==0]), len(positives)*3)
-negatives = pairs[pairs['label']==0].sample(n=neg_count, random_state=42)
-pairs_balanced = pd.concat([positives, negatives]).reset_index(drop=True)
-
-# -----------------------------
-# 3️⃣ Feature engineering
-# -----------------------------
-# NOTE: Some features are temporary/fake for training purposes.
-pairs_balanced['shift_duration_h'] = (pairs_balanced['shift_end_date'] - pairs_balanced['shift_start_date']).dt.total_seconds() / 3600
-pairs_balanced['shift_duration_h_bucket'] = pd.cut(
-    pairs_balanced['shift_duration_h'],
-    bins=[0,48,72,np.inf],
-    labels=['short','medium','long']
+    nurses.assign(key=1),
+    shifts.assign(key=1),
+    on='key',
+    suffixes=('_nurse', '_shift')
 )
-pairs_balanced['shift_hour'] = pairs_balanced['shift_start_date'].dt.hour
-pairs_balanced['shift_dayofweek'] = pairs_balanced['shift_start_date'].dt.dayofweek
-pairs_balanced['is_night_shift'] = (pairs_balanced['shift_type']=='NIGHT').astype(int)
-pairs_balanced['age'] = (pd.Timestamp('2025-12-01') - pd.to_datetime(pairs_balanced['date_of_birth'])).dt.days // 365
-pairs_balanced['distance_km'] = np.random.randint(1,50,size=len(pairs_balanced))  # TEMP: replace with real distance calculation using lat/lng
+pairs.drop('key', axis=1, inplace=True)
 
-# One-hot encode categorical features
-cat_features = ['shift_type','shift_duration_h_bucket']
-ohe = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-ohe_features = ohe.fit_transform(pairs_balanced[cat_features])
-ohe_df = pd.DataFrame(ohe_features, columns=ohe.get_feature_names_out(cat_features))
+# =========================
+# 5. Feature engineering
+# =========================
+def compute_distance(row):
+    return geodesic((row['base_lat'], row['base_lng']), (row['lat'], row['lng'])).km
+pairs['distance_km'] = pairs.apply(compute_distance, axis=1)
 
-# Numerical features
-num_features = ['shift_duration_h','spec_match','location_match','role_match','shift_hour','shift_dayofweek','is_night_shift','age','distance_km']
-num_df = pairs_balanced[num_features].fillna(0)
+pairs['specialization_match'] = (pairs['specialization_nurse'] == pairs['specialization_shift']).astype(int)
+pairs['role_match'] = (pairs['role_id'] == pairs['role_id']).astype(int)  # Placeholder
 
-X = pd.concat([num_df.reset_index(drop=True), ohe_df.reset_index(drop=True)], axis=1)
-y = pairs_balanced['label']
+# Location preference
+def location_match(row):
+    locs = row.get('preferred_locations', [])
+    if locs is None: locs = []
+    return int(row['location'] in locs)
+pairs['location_preference_match'] = pairs.apply(location_match, axis=1)
 
-# Standardize numerical features
-scaler = StandardScaler()
-X[num_features] = scaler.fit_transform(X[num_features])
+# Shift features
+pairs['shift_start_date'] = pd.to_datetime(pairs['shift_start_date'])
+pairs['shift_hour'] = pairs['shift_start_date'].dt.hour
+pairs['is_night_shift'] = ((pairs['shift_hour'] >= 20) | (pairs['shift_hour'] < 6)).astype(int)
+pairs['lead_time_days'] = np.random.randint(1, 30, len(pairs))  # Placeholder
+pairs['experience_gap'] = np.random.randint(-5,5,len(pairs))     # Placeholder
 
-# -----------------------------
-# 4️⃣ Train/test split
-# -----------------------------
-X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y, test_size=0.2, random_state=42)
+# =========================
+# 6. Encode categorical features for LightGBM
+# =========================
+for col in ['specialization_nurse', 'role_id', 'shift_type', 'location']:
+    pairs[col] = pairs[col].astype('category').cat.codes
 
-# -----------------------------
-# 5️⃣ Train Logistic Regression
-# -----------------------------
-model = LogisticRegression(max_iter=500)
-model.fit(X_train, y_train)
+# =========================
+# 7. Target (placeholder)
+# =========================
+pairs['target'] = np.random.randint(0,2,len(pairs))
 
-# -----------------------------
-# 6️⃣ Evaluate
-# -----------------------------
-y_pred = model.predict(X_test)
-y_pred_proba = model.predict_proba(X_test)[:,1]
+# =========================
+# 8. Train-test split
+# =========================
+feature_cols = [
+    'age', 'distance_km', 'specialization_match', 'role_match',
+    'experience_gap', 'is_night_shift', 'lead_time_days', 'location_preference_match',
+    'avg_distance_accepted', 'night_shift_preference', 'avg_hourly_rate_accepted'
+] + [f'hospital_{hid}_familiarity' for hid in hospital_ids]
 
-auc = roc_auc_score(y_test, y_pred_proba)
-precision = precision_score(y_test, y_pred)
-recall = recall_score(y_test, y_pred)
-f1 = f1_score(y_test, y_pred)
+X = pairs[feature_cols]
+y = pairs['target']
 
-print(f"AUC: {auc:.4f}  Precision: {precision:.4f}  Recall: {recall:.4f}  F1: {f1:.4f}")
-print("Label counts:\n", y.value_counts())
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# -----------------------------
-# 7️⃣ Save model, scaler, and encoder
-# -----------------------------
-joblib.dump(model, "nurse_shift_model.pkl")
-joblib.dump(scaler, "scaler.pkl")
-joblib.dump(ohe, "ohe.pkl")
+# =========================
+# 9. Train LightGBM model
+# =========================
+lgb_train = lgb.Dataset(X_train, y_train)
+lgb_test = lgb.Dataset(X_test, y_test, reference=lgb_train)
 
-# -----------------------------
-# 8️⃣ Function to score multiple shifts for a nurse
-# -----------------------------
-def score_shifts(nurse, shifts_df):
-    """
-    nurse: dict with keys 'specialization', 'base_location_norm', 'role_id', 'date_of_birth'
-    shifts_df: DataFrame with same structure as shifts_df above
-    
-    returns: DataFrame with unique_shift_id + match_score (0–1)
-    """
-    temp_df = shifts_df.copy()
-    
-    # Pair features
-    temp_df['spec_match'] = (nurse['specialization'] == temp_df['specialization_norm']).astype(int)
-    temp_df['location_match'] = (nurse['base_location_norm'] == temp_df['location_norm']).astype(int)
-    temp_df['role_match'] = int(nurse['role_id'] == 'R1')  # TEMP placeholder logic
-    
-    # Shift features
-    temp_df['shift_duration_h'] = (temp_df['shift_end_date'] - temp_df['shift_start_date']).dt.total_seconds() / 3600
-    temp_df['shift_duration_h_bucket'] = pd.cut(
-        temp_df['shift_duration_h'],
-        bins=[0,48,72,np.inf],
-        labels=['short','medium','long']
-    )
-    temp_df['shift_hour'] = temp_df['shift_start_date'].dt.hour
-    temp_df['shift_dayofweek'] = temp_df['shift_start_date'].dt.dayofweek
-    temp_df['is_night_shift'] = (temp_df['shift_type']=='NIGHT').astype(int)
-    
-    # Temporary nurse features
-    temp_df['age'] = (pd.Timestamp('2025-12-01') - pd.to_datetime(nurse['date_of_birth'])).days // 365
-    temp_df['distance_km'] = np.random.randint(1,50,size=len(temp_df))  # TEMP: replace with real distance
-    
-    # One-hot encode categorical
-    ohe_loaded = joblib.load("ohe.pkl")
-    ohe_features = ohe_loaded.transform(temp_df[cat_features])
-    ohe_df = pd.DataFrame(ohe_features, columns=ohe_loaded.get_feature_names_out(cat_features))
-    
-    # Numerical features
-    num_df = temp_df[num_features].fillna(0)
-    scaler_loaded = joblib.load("scaler.pkl")
-    num_df[num_features] = scaler_loaded.transform(num_df[num_features])
-    
-    # Combine features
-    X_input = pd.concat([num_df.reset_index(drop=True), ohe_df.reset_index(drop=True)], axis=1)
-    
-    # Prediction
-    model_loaded = joblib.load("nurse_shift_model.pkl")
-    temp_df['match_score'] = model_loaded.predict_proba(X_input)[:,1]
-    
-    return temp_df[['unique_shift_id','match_score']]
+params = {
+    'objective': 'binary',
+    'metric': 'binary_logloss',
+    'verbosity': -1,
+    'boosting_type': 'gbdt'
+}
 
-# ✅ Example usage
-nurse_example = {'specialization':'Läkare','base_location_norm':'Söderstad','role_id':'R1','date_of_birth':'1990-01-01'}
-print(score_shifts(nurse_example, shifts_df))
+model = lgb.train(params, lgb_train, valid_sets=[lgb_train,lgb_test], num_boost_round=100)
+
+# =========================
+# 10. Predictions
+# =========================
+pairs['pred_score'] = model.predict(X)
+top_matches = pairs.sort_values('pred_score', ascending=False).groupby('id_shift').head(5)
+print(top_matches[['id_nurse','id_shift','pred_score']])

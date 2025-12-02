@@ -1,8 +1,8 @@
+import lightgbm as lgb
 import joblib
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent / "Models"
+MODEL_PATH = Path(__file__).parent / "models" / "LightGBM.pkl"
 
-model = joblib.load(BASE_DIR / "nurse_shift_model.pkl")
-scaler = joblib.load(BASE_DIR / "scaler.pkl")
-ohe = joblib.load(BASE_DIR / "ohe.pkl")
+def load_model():
+    return joblib.load(MODEL_PATH)
