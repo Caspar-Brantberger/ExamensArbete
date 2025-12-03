@@ -11,36 +11,46 @@ from geopy.distance import geodesic
 # 0. Notes for real data usage
 # =========================
 """
-This script is a prototype for training a LightGBM model to predict nurse-shift matching scores.
-Currently, it uses synthetic or placeholder data for development purposes.
+This script trains a prototype LightGBM model for nurse-shift matching.
 
-When using real data, make sure to update:
+Current version:
+- Uses synthetic / placeholder values for many fields (distance, experience, lead time, historical stats, etc.)
+- Demonstrates the full ML process: loading data → expanding pairs → feature engineering → training → scoring
+- Allows experimenting with the scoring logic before real historical data is available.
 
-1. Database connection:
-- Replace 'database', 'USERNAME', 'PASSWORD' with your actual PostgreSQL credentials.
-    Example:
-    engine = create_engine("postgresql://USERNAME:PASSWORD@HOST:PORT/DATABASE")
+Why synthetic data?
+    
+The project was missing several important columns and historical values required by the model (e.g.,
+avg_distance_accepted, night_shift_preference, hospital_familiarity, lat/lng, experience_gap, etc.). 
+Without these, it's not possible to train a complete ML model.
 
-2. Table names:
-- Ensure tables exist: shift_advertisement, nurse, nurse_shift
-- Adjust SQL queries if your schema differs
+To be able to:
 
-3. Placeholder values:
-- Lat/lng, experience, lead_time, hourly rates, hospital familiarity, etc. are random.
-- Replace with real values or computed features from your historical data
+test the full ML pipeline and feature engineering,
 
-4. Target:
-- Currently random (0/1)
-- Replace with your real label (e.g., whether nurse accepted the shift or historical match score)
+verify the integration from backend → ML → scoring,
 
-5. Categorical features:
-- Using LightGBM categorical encoding (.astype('category').cat.codes)
-- Adjust as needed for real data (LightGBM supports categories directly)
+build a functional prototype at this stage,
 
-6. Other synthetic features:
-- total_shifts_completed, avg_distance_accepted, night_shift_preference, hospital familiarity
-- Replace with historical metrics if available
+I used synthetic values for the features that do not exist yet.
+
+Synthetic data was not used to create an accurate model, but to validate that the structure, logic, and system flow work as intended. 
+Once real data becomes available, all synthetic values will be replaced and the model can be retrained without any code changes.
+
+When integrating real production data:
+1. Replace database credentials and ensure tables match your schema.
+2. Replace all placeholder features (random values) with actual engineered metrics:
+    - true historical acceptance rates
+    - real distance values
+    - real experience gap
+    - real lead-time between posting and shift start
+3. Recompute historical aggregated nurse features from nurse_shift history.
+4. Keep Feature Engineering identical between train and inference.
+5. Replace the synthetic target with your real target label.
+6. Re-train and compare multiple ML algorithms (LightGBM, Random Forest, XGBoost, Logistic Regression).
+7. Select the best model based on validation metrics and real-world behavior.
 """
+
 
 # =========================
 # 1. Load data from database
@@ -96,7 +106,7 @@ for hid in hospital_ids:
 # 3. Merge historical nurse-shift data if available
 # =========================
 if not nurse_shifts.empty:
-    # Average distance accepted
+    # Average distance accepted,replace synthetic with real historical data
     if 'distance_km' in nurse_shifts.columns:
         avg_dist = nurse_shifts.groupby('nurse_id')['distance_km'].mean().rename('avg_distance_accepted')
         nurses = nurses.merge(avg_dist, left_on='id', right_index=True, how='left')
@@ -144,8 +154,8 @@ pairs['location_preference_match'] = pairs.apply(location_match, axis=1)
 pairs['shift_start_date'] = pd.to_datetime(pairs['shift_start_date'])
 pairs['shift_hour'] = pairs['shift_start_date'].dt.hour
 pairs['is_night_shift'] = ((pairs['shift_hour'] >= 20) | (pairs['shift_hour'] < 6)).astype(int)
-pairs['lead_time_days'] = np.random.randint(1, 30, len(pairs))  # Placeholder
-pairs['experience_gap'] = np.random.randint(-5,5,len(pairs))     # Placeholder
+pairs['lead_time_days'] = np.random.randint(1, 30, len(pairs))  # Placeholder #Synthetic
+pairs['experience_gap'] = np.random.randint(-5,5,len(pairs))     # Placeholder #Synthetic
 
 # =========================
 # 6. Encode categorical features for LightGBM
@@ -156,7 +166,7 @@ for col in ['specialization_nurse', 'role_id', 'shift_type', 'location']:
 # =========================
 # 7. Target (placeholder)
 # =========================
-pairs['target'] = np.random.randint(0,2,len(pairs))
+pairs['target'] = np.random.randint(0,2,len(pairs)) # Placeholder synthetic target
 
 # =========================
 # 8. Train-test split

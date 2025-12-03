@@ -16,7 +16,17 @@ import inspect
 from typing import Any,List,Dict
 from app.ML.models import load_model
 
-
+# =========================
+# SYNTHETIC / PLACEHOLDER FIELDS
+# Replace these with real data when available
+# - base_lat, base_lng
+# - avg_distance_accepted, night_shift_preference, avg_hourly_rate_accepted
+# - lead_time_days, experience_gap
+# - role_match (currently always 1)
+# - expected_features feature_11–feature_33 placeholders
+# Fallbacks for shifts:
+# - lat, lng if missing
+# =========================
 
 
 
@@ -75,6 +85,9 @@ def get_shift_scores(nurse_id: UUID, db: Session = Depends(get_db)):
 
     Prepares nurse-shift pairs with correct numeric features for
     the trained LightGBM model.
+
+    NOTE: This implementation uses synthetic data for missing fields.
+    Replace synthetic data generation with real historical data
     """
     nurse = db.query(Nurse).filter(Nurse.id == nurse_id).first()
     if not nurse:
@@ -119,16 +132,16 @@ def get_shift_scores(nurse_id: UUID, db: Session = Depends(get_db)):
         return geodesic((row['base_lat'], row['base_lng']), (row['lat'], row['lng'])).km
 
 
-    pairs_df['distance_km'] = pairs_df.apply(safe_distance, axis=1)
+    pairs_df['distance_km'] = pairs_df.apply(safe_distance, axis=1) # SYNTHETIC if base_lat/lng or shift lat/lng missing
     pairs_df['specialization_match'] = (pairs_df['specialization_nurse'] == pairs_df['specialization_shift']).astype(int)
-    pairs_df['role_match'] = 1  
+    pairs_df['role_match'] = 1  # SYNTHETIC placeholder, replace with real role matching logic
     pairs_df['location_preference_match'] = pairs_df.apply(
         lambda r: int(r['location'] in r['preferred_locations']), axis=1
     )
     pairs_df['is_night_shift'] = ((pairs_df['shift_start_date'].dt.hour >= 20) |
                                 (pairs_df['shift_start_date'].dt.hour < 6)).astype(int)
-    pairs_df['lead_time_days'] = np.random.randint(1, 30, len(pairs_df))
-    pairs_df['experience_gap'] = np.random.randint(-5, 5, len(pairs_df))
+    pairs_df['lead_time_days'] = np.random.randint(1, 30, len(pairs_df))  # SYNTHETIC
+    pairs_df['experience_gap'] = np.random.randint(-5, 5, len(pairs_df))   # SYNTHETIC
 
     for col in ['specialization_nurse', 'role_id', 'shift_type', 'location']:
         if col in pairs_df.columns:
@@ -139,7 +152,7 @@ def get_shift_scores(nurse_id: UUID, db: Session = Depends(get_db)):
         'experience_gap', 'is_night_shift', 'lead_time_days',
         'location_preference_match', 'avg_distance_accepted',
         'night_shift_preference', 'avg_hourly_rate_accepted'
-    ] + [f'feature_{i}' for i in range(11, 34)]
+    ] + [f'feature_{i}' for i in range(11, 34)] # SYNTHETIC placeholders for future features
 
     X = pd.DataFrame(0, index=pairs_df.index, columns=expected_features)
     for col in ['age', 'distance_km', 'specialization_match', 'role_match',
@@ -149,7 +162,7 @@ def get_shift_scores(nurse_id: UUID, db: Session = Depends(get_db)):
         X[col] = pairs_df[col]
 
     try:
-        scored_df = score_shifts(X)
+        scored_df = score_shifts(X) # SYNTHETIC target predictions
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error scoring shifts: {e}")
 
