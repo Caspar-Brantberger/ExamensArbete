@@ -20,7 +20,7 @@ from pathlib import Path
 # This file only contains the logic for loading the trained model. 
 # If another algorithm is used in the future, replace the loading mechanism here.
 
-MODEL_PATH = Path(__file__).parent / "models" / "LightGBM.pkl"
+MODEL_PATH = Path(__file__).parent / "models" / "nurse_shift_model.pkl"
 
 def load_model():
     return joblib.load(MODEL_PATH)

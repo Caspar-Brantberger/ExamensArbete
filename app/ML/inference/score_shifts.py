@@ -23,9 +23,54 @@ The model will not work correctly if features are missing or misordered.
 
 model = load_model()
 
-def score_shifts(pairs_df: pd.DataFrame) -> pd.DataFrame:
+FEATURE_COLS_BASE = [
+    'age', 'distance_km', 'specialization_match', 'role_match',
+    'experience_gap', 'is_night_shift', 'lead_time_days', 'location_preference_match',
+    'avg_distance_accepted', 'night_shift_preference', 'avg_hourly_rate_accepted',
+    'shift_hour', 'shift_day_of_week', 'shift_duration_hours', 'preferred_location_distance_rank'
+]
+
+def ensure_features(df: pd.DataFrame, hospital_ids: list):
+    """
+    Se till att alla features finns i df. 
+    Om de saknas skapas de med defaultvärden från Jupyter-skriptet.
+    """
+    # Fyll på basfeatures
+    for col in FEATURE_COLS_BASE:
+        if col not in df.columns:
+            if col in ['distance_km', 'avg_distance_accepted', 'experience_gap', 'shift_duration_hours',
+                       'lead_time_days', 'preferred_location_distance_rank']:
+                df[col] = np.random.uniform(0, 10, len(df))
+            elif col in ['age']:
+                df[col] = 30
+            elif col in ['night_shift_preference', 'location_preference_match', 'specialization_match',
+                         'role_match']:
+                df[col] = 0
+            elif col in ['avg_hourly_rate_accepted', 'shift_hour', 'shift_day_of_week']:
+                df[col] = np.random.uniform(200, 600, len(df))
+
+    # Fyll på hospital familiarity features
+    for hid in hospital_ids:
+        col_name = f'hospital_{hid}_familiarity'
+        if col_name not in df.columns:
+            df[col_name] = np.random.randint(0, 10, len(df))
+
+    return df
+
+def score_shifts(pairs_df: pd.DataFrame, hospital_ids: list) -> pd.DataFrame:
+    """
+    Skör nurse-shift pairs och lägg till pred_score.
     
-    feature_cols = [col for col in pairs_df.columns if col not in ['id_nurse', 'id_shift']]
+    hospital_ids: lista med alla hospital_id som användes vid träning
+    """
+    pairs_df = ensure_features(pairs_df, hospital_ids)
+
+    # Säkerställ inga NaN
+    pairs_df['distance_km'] = pairs_df['distance_km'].fillna(0)
+    pairs_df['age'] = pairs_df['age'].fillna(30)
+
+    # Håll feature-ordningen
+    feature_cols = FEATURE_COLS_BASE + [f'hospital_{hid}_familiarity' for hid in hospital_ids]
     X = pairs_df[feature_cols]
 
     pairs_df['pred_score'] = model.predict(X)
