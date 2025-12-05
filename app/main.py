@@ -94,8 +94,16 @@ def get_shift_scores(nurse_id: UUID, db: Session = Depends(get_db)):
     shifts = db.query(ShiftAdvertisement).all()
     if not shifts:
         return {"message": "No shifts available"}
+    
+    nurse_df = pd.DataFrame([nurse.__dict__])
+    shifts_df = pd.DataFrame([s.__dict__ for s in shifts])
+    nurse_shifts_df = pd.DataFrame() 
 
-    pairs_df, hospital_ids = build_pairs_with_features(nurse.__dict__, [s.__dict__ for s in shifts])
+    pairs_df, hospital_ids = build_pairs_with_features(nurse_df, shifts_df, nurse_shifts_df)
+
+    pairs_df['id_nurse'] = nurse_df['id'].iloc[0]
+    pairs_df['id_shift'] = shifts_df['id'].iloc[0] if len(shifts_df) == 1 else shifts_df['id'].repeat(len(nurse_df)).values
+
     scored_df = score_shifts(pairs_df, hospital_ids)
 
     scored_df['id_nurse'] = pairs_df['id_nurse']
