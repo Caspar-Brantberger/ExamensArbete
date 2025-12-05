@@ -16,6 +16,7 @@ from app.ML.models import load_model
 import pickle
 from pathlib import Path
 from app.ML.model_loader import init as init_model
+from app.ML.build_pairs_with_features import build_pairs_with_features
 
 
 # =========================
@@ -34,36 +35,15 @@ from app.ML.model_loader import init as init_model
 
 app = FastAPI()
 
+@app.on_event("startup")
+def startup_event():
+    init_model()
+
 
 @app.get("/init-model")
 async def root():
     return {"message": "Model initialized"}
 
-MODEL_PATH = Path("ML") / "models" / "nurse_shift_model.pkl"
-
-def load_model(file_path: Path):
-    """Loads a pickle file (ML model)."""
-    try:
-        with open(file_path, 'rb') as f:
-            model = pickle.load(f)
-        print(f"Model loaded successfully from: {file_path}")
-        return model
-    except FileNotFoundError:
-        print(f"ERROR: Model not found at path: {file_path}")
-        return None
-    except Exception as e:
-        print(f"An unexpected error occurred while loading the model: {e}")
-        return None
-
-nurse_shift_model = load_model(MODEL_PATH)
-
-if nurse_shift_model:
-    pass
-
-
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
 
 @app.get("/dev-data/{nurse_id}",response_model= NurseWithShiftsSchema)
 def get_dev_data(nurse_id: str, db: Session = Depends(get_db)):
@@ -113,9 +93,11 @@ def get_shift_scores(nurse_id: UUID, db: Session = Depends(get_db)):
     if not shifts:
         return {"message": "No shifts available"}
 
-    pairs_df, hospital_ids = build_pairs_with_features(nurse, shifts)
-
+    pairs_df, hospital_ids = build_pairs_with_features(nurse.__dict__, [s.__dict__ for s in shifts])
     scored_df = score_shifts(pairs_df, hospital_ids)
+
+    scored_df['id_nurse'] = pairs_df['id_nurse']
+    scored_df['id_shift'] = pairs_df['id_shift']
 
     return scored_df.sort_values("pred_score", ascending=False).to_dict(orient="records")
 
