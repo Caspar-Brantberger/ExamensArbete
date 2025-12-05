@@ -78,4 +78,11 @@ def build_pairs_with_features(nurses: pd.DataFrame, shifts: pd.DataFrame, nurse_
         if col_name not in pairs_df.columns:
             pairs_df[col_name] = 0
 
+    nurse_shifts_set = set(zip(nurse_shifts['nurse_id'], nurse_shifts['shift_id']))
+
+    pairs_df['label'] = pairs_df.apply(
+    lambda row: 1 if (row['id'], row['unique_shift_id']) in nurse_shifts_set else 0,
+    axis=1
+)
+
     return pairs_df, hospital_ids
