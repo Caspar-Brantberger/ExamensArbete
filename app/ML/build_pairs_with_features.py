@@ -10,6 +10,9 @@ def safe_distance(row):
 def build_pairs_with_features(nurses: pd.DataFrame, shifts: pd.DataFrame, nurse_shifts: pd.DataFrame) -> pd.DataFrame:
     nurses = nurses.copy()
     shifts = shifts.copy()
+
+    nurses = nurses.rename(columns={'id': 'nurse_id'})
+    shifts = shifts.rename(columns={'id': 'shift_id', 'hospital_id': 'hospital_id'})
     
     for col, default in [
         ('base_lat', lambda n: np.random.uniform(55.3, 69.1, size=len(n))),
@@ -78,10 +81,13 @@ def build_pairs_with_features(nurses: pd.DataFrame, shifts: pd.DataFrame, nurse_
         if col_name not in pairs_df.columns:
             pairs_df[col_name] = 0
 
-    nurse_shifts_set = set(zip(nurse_shifts['nurse_id'], nurse_shifts['shift_id']))
+    if nurse_shifts is None or nurse_shifts.empty:
+        nurse_shifts_set = set()
+    else:
+        nurse_shifts_set = set(zip(nurse_shifts['nurse_id'], nurse_shifts['shift_id']))
 
     pairs_df['label'] = pairs_df.apply(
-    lambda row: 1 if (row['id'], row['unique_shift_id']) in nurse_shifts_set else 0,
+    lambda row: 1 if (row['nurse_id'], row['shift_id']) in nurse_shifts_set else 0,
     axis=1
 )
 

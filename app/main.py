@@ -99,6 +99,7 @@ def get_shift_scores(nurse_id: UUID, db: Session = Depends(get_db)):
     shifts_df = pd.DataFrame([s.__dict__ for s in shifts])
     nurse_shifts_df = pd.DataFrame() 
 
+    nurse_shifts_df = pd.DataFrame(columns=['nurse_id', 'shift_id'])
     pairs_df, hospital_ids = build_pairs_with_features(nurse_df, shifts_df, nurse_shifts_df)
 
     pairs_df['id_nurse'] = nurse_df['id'].iloc[0]
