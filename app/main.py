@@ -17,6 +17,7 @@ import pickle
 from pathlib import Path
 from app.ML.model_loader import init as init_model
 from app.ML.build_pairs_with_features import build_pairs_with_features
+from app.ML.training.train_model import train_model
 
 
 # =========================
@@ -38,6 +39,7 @@ app = FastAPI()
 @app.on_event("startup")
 def startup_event():
     init_model()
+
 
 
 @app.get("/init-model")
@@ -100,5 +102,10 @@ def get_shift_scores(nurse_id: UUID, db: Session = Depends(get_db)):
     scored_df['id_shift'] = pairs_df['id_shift']
 
     return scored_df.sort_values("pred_score", ascending=False).to_dict(orient="records")
+
+@app.post("/retrain-model")
+def train():
+    train_model()
+    return {"message": "Model retrained"}
 
 
