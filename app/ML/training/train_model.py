@@ -26,6 +26,19 @@ def train_model():
 
     df_pairs, hospital_ids = build_pairs_with_features(nurses, shifts, nurse_shifts)
 
+    FEATURE_COLS_BASE = [
+    'age', 'distance_km', 'specialization_match', 'role_match',
+    'experience_gap', 'is_night_shift', 'lead_time_days', 'location_preference_match',
+    'avg_distance_accepted', 'night_shift_preference', 'avg_hourly_rate_accepted',
+    'shift_hour', 'shift_day_of_week', 'shift_duration_hours', 'preferred_location_distance_rank'
+    ]
+
+    df_pairs = df_pairs.drop(columns=[
+    'first_name', 'last_name', 'social_security_number', 'street_address',
+    'postal_code', 'city', 'email', 'password', 'bio', 'bank_account_id'
+    ], errors='ignore')
+
+
     df_pairs['preferred_locations_count'] = df_pairs['preferred_locations'].apply(
         lambda x: len(x) if isinstance(x, list) else 0
     )
@@ -39,10 +52,10 @@ def train_model():
         if col in df_pairs.columns:
             df_pairs[col], _ = pd.factorize(df_pairs[col])
 
-    feature_columns = [col for col in df_pairs.columns if col != 'label']
+    feature_columns = FEATURE_COLS_BASE + [f"hospital_{hid}_familiarity" for hid in hospital_ids]
 
-    X = df_pairs[feature_columns].fillna(0)
-    y = df_pairs['label']
+    X = df_pairs[feature_columns].astype(float)
+    y = df_pairs['label'].astype(int)
 
     model = lgb.LGBMClassifier(
         n_estimators=1000,
