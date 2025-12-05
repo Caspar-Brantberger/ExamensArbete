@@ -33,7 +33,7 @@ def init(model_path: Optional[Path] = None):
         _model = load_model(model_path)
     return _model
 
-def get_model():
+def get_model() -> Any:
     if _model is None:
         raise ValueError("Model not loaded. Call init() first.")
     return _model

@@ -1,5 +1,10 @@
 import pandas as pd
-from app.ML.models import load_model
+import numpy as np
+from geopy.distance import geodesic
+from typing import List
+from app.ML.model_loader import get_model
+import lightgbm as lgb
+from uuid import UUID
 
 """
 This function scores nurse-shift pairs using the trained ML model.
@@ -21,7 +26,6 @@ When using real production data:
 The model will not work correctly if features are missing or misordered.
 """
 
-model = load_model()
 
 FEATURE_COLS_BASE = [
     'age', 'distance_km', 'specialization_match', 'role_match',
@@ -30,37 +34,45 @@ FEATURE_COLS_BASE = [
     'shift_hour', 'shift_day_of_week', 'shift_duration_hours', 'preferred_location_distance_rank'
 ]
 
-def ensure_features(df: pd.DataFrame, hospital_ids: list):
+def safe_distance(row):
+    if pd.isna(row['base_lat']) or pd.isna(row['base_lng']) or pd.isna(row['lat']) or pd.isna(row['lng']):
+        return 0.0  # SYNTHETIC fallback
+    return geodesic((row['base_lat'], row['base_lng']), (row['lat'], row['lng'])).km
+
+def ensure_features(df: pd.DataFrame, hospital_ids: list[UUID]) -> pd.DataFrame:
     for col in FEATURE_COLS_BASE:
         if col not in df.columns:
             if col in ['distance_km', 'avg_distance_accepted', 'experience_gap', 'shift_duration_hours',
                     'lead_time_days', 'preferred_location_distance_rank']:
-                df[col] = np.random.uniform(0, 10, len(df))
+                df[col] = 0
             elif col in ['age']:
                 df[col] = 30
             elif col in ['night_shift_preference', 'location_preference_match', 'specialization_match',
                         'role_match']:
                 df[col] = 0
             elif col in ['avg_hourly_rate_accepted', 'shift_hour', 'shift_day_of_week']:
-                df[col] = np.random.uniform(200, 600, len(df))
+                df[col] = 200
 
     for hid in hospital_ids:
-        col_name = f'hospital_{hid}_familiarity'
+        hid_str = str(hid).replace('-', '_')
+        col_name = f'hospital_{hid_str}_familiarity'
         if col_name not in df.columns:
-            df[col_name] = np.random.randint(0, 10, len(df))
+            df[col_name] = 0
 
     return df
 
 def score_shifts(pairs_df: pd.DataFrame, hospital_ids: list) -> pd.DataFrame:
+
+    model = get_model()
+    pairs_df = ensure_features(pairs_df.copy(), hospital_ids)
+
     
-
-    pairs_df = ensure_features(pairs_df, hospital_ids)
-
-    pairs_df['distance_km'] = pairs_df['distance_km'].fillna(0)
-    pairs_df['age'] = pairs_df['age'].fillna(30)
-
-    feature_cols = FEATURE_COLS_BASE + [f'hospital_{hid}_familiarity' for hid in hospital_ids]
+    feature_cols = FEATURE_COLS_BASE + [f"hospital_{str(hid).replace('-', '_')}_familiarity" for hid in hospital_ids]
     X = pairs_df[feature_cols]
 
-    pairs_df['pred_score'] = model.predict(X)
+    if(isinstance(model,lgb.Booster)):
+        pairs_df['pred_score'] = model.predict(X)
+    else:
+        pairs_df['pred_score'] = model.predict(X)
+
     return pairs_df
