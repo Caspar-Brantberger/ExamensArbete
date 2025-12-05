@@ -10,11 +10,13 @@ def train_model():
     import os
     import logging
     logging.basicConfig(level=logging.INFO)
-
+    
+    # Load database credentials from environment variables
     DB_USER = os.getenv("DB_USER")
     DB_PASSWORD = os.getenv("DB_PASSWORD")
     DB_NAME = os.getenv("DB_NAME")
-
+    
+    # Ensure credentials are set
     if not all([DB_USER, DB_PASSWORD, DB_NAME]):
         raise ValueError("Database credentials are not fully set in environment variables.")
 
@@ -24,21 +26,28 @@ def train_model():
     shifts = pd.read_sql("SELECT * FROM shift_advertisement", engine)
     nurse_shifts = pd.read_sql("SELECT * FROM nurse_shift", engine)
 
+    # Build pairwise features
+    # TODO: Once we have more real nurse/shift data, check that all relevant features are include
     df_pairs, hospital_ids = build_pairs_with_features(nurses, shifts, nurse_shifts)
-
+    
+    # Base features to use in model
     FEATURE_COLS_BASE = [
     'age', 'distance_km', 'specialization_match', 'role_match',
     'experience_gap', 'is_night_shift', 'lead_time_days', 'location_preference_match',
     'avg_distance_accepted', 'night_shift_preference', 'avg_hourly_rate_accepted',
     'shift_hour', 'shift_day_of_week', 'shift_duration_hours', 'preferred_location_distance_rank'
     ]
-
+    
+    # Drop sensitive / irrelevant columns for modeling
+    # TODO: Ensure this matches real database schema
     df_pairs = df_pairs.drop(columns=[
     'first_name', 'last_name', 'social_security_number', 'street_address',
     'postal_code', 'city', 'email', 'password', 'bio', 'bank_account_id'
     ], errors='ignore')
 
-
+    
+    # Count preferred locations (temporary feature for model)
+    # TODO: In real data, preferred_locations may be used differently
     df_pairs['preferred_locations_count'] = df_pairs['preferred_locations'].apply(
         lambda x: len(x) if isinstance(x, list) else 0
     )
