@@ -1,0 +1,109 @@
+name: ML API Deployment
+
+on:
+  push:
+    branches:
+      - dev_main
+    paths:
+      - "ph-suggestion-engine/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ml-api-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy-ml-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # YOU NEED TO ADD THIS SECRET TO GITHUB: ENV_ML_API
+      - name: Restore .env
+        run: echo "${{ secrets.ENV_ML_API }}" | base64 -d > ph-suggestion-engine/.env
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Allow SSH Only from Pipeline Agent IP
+        run: |
+          RG="PortabelHealthDev"
+          NSG="Portabel-Health-Dev-nsg"
+          RULE="AllowPipelineSSH-ML" # <--- Unique Rule Name
+
+          echo "Deleting existing NSG rule (if any)..."
+          az network nsg rule delete --resource-group $RG --nsg-name $NSG --name $RULE || echo "Rule did not exist, continuing..."
+
+          echo "Fetching public IP..."
+          PUBLIC_IP=$(curl -s https://api.ipify.org)
+
+          echo "Creating new NSG rule..."
+          az network nsg rule create --resource-group $RG --nsg-name $NSG --name $RULE --priority 101 --direction Inbound --access Allow --protocol Tcp --source-address-prefix "$PUBLIC_IP/32" --source-port-range '*' --destination-address-prefix '*' --destination-port-range 22
+
+      - name: Docker Login
+        uses: docker/login-action@v3.5.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push Docker image
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: ./ph-suggestion-engine
+          file: ./ph-suggestion-engine/Dockerfile
+          push: true
+          tags: |
+            portabelhealth/ml-api:latest
+            portabelhealth/ml-api:${{ github.run_id }}
+
+      - name: Deploy ML API via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          ENV_CONTENT: ${{ secrets.ENV_ML_API }}
+        with:
+          host: ${{ secrets.DEV_VM_HOST }}
+          username: ${{ vars.DEV_VM_USER }}
+          key: ${{ secrets.DEV_VM_SSH_KEY }}
+          envs: DOCKER_USERNAME,DOCKER_TOKEN,ENV_CONTENT
+          script: |
+            export GPG_TTY=$(tty)
+            echo "$DOCKER_TOKEN" | docker login -u "$DOCKER_USERNAME" --password-stdin 2>/dev/null
+            
+            # Create .env file specifically for ML container
+            echo "$ENV_CONTENT" | base64 -d > ml-api.env
+
+            # --- CRITICAL: Stop ONLY the ML container ---
+            echo "Stopping old ML container..."
+            docker stop ml-api || true
+            docker rm ml-api || true
+
+            echo "Pulling latest image..."
+            docker pull portabelhealth/ml-api:latest
+
+            echo "Starting new ML container..."
+            # Runs on port 8000
+            docker run -d \
+              --name ml-api \
+              --env-file ml-api.env \
+              -p 8000:8000 \
+              --restart unless-stopped \
+              --memory="512m" \
+              --cpus="1.0" \
+              --log-opt max-size=10m \
+              --log-opt max-file=3 \
+              portabelhealth/ml-api:latest            
+            docker logout
+            docker image prune -f
+            
+            # Reload Nginx to pick up any config changes
+            sudo systemctl reload nginx
+
+      - name: Deleting SSH Inbound Rule
+        if: always()
+        run: |
+          az network nsg rule delete --resource-group "PortabelHealthDev" --nsg-name "Portabel-Health-Dev-nsg" --name "AllowPipelineSSH-ML" || echo "Rule already deleted"
