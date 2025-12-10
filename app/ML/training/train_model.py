@@ -12,15 +12,24 @@ def train_model():
     logging.basicConfig(level=logging.INFO)
     
     # Load database credentials from environment variables
-    DB_USER = os.getenv("DB_USER")
-    DB_PASSWORD = os.getenv("DB_PASSWORD")
-    DB_NAME = os.getenv("DB_NAME")
+    #enter your own credentials here for local testing
+    DB_USER = ""
+    DB_PASSWORD = ""
+    DB_NAME = ""
+    DB_HOST = ""
+    DB_PORT = ""
+
+    logging.info(f"DB_USER: {DB_USER}")
+    logging.info(f"DB_PASSWORD: {DB_PASSWORD}")
+    logging.info(f"DB_NAME: {DB_NAME}")
+    logging.info(f"DB_HOST: {DB_HOST}")
+    logging.info(f"DB_PORT: {DB_PORT}")
     
     # Ensure credentials are set
     if not all([DB_USER, DB_PASSWORD, DB_NAME]):
         raise ValueError("Database credentials are not fully set in environment variables.")
 
-    engine = create_engine(f"postgresql://{DB_USER}:{DB_PASSWORD}@localhost:5432/{DB_NAME}")
+    engine = create_engine(f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
 
     nurses = pd.read_sql("SELECT * FROM nurse", engine)
     shifts = pd.read_sql("SELECT * FROM shift_advertisement", engine)
