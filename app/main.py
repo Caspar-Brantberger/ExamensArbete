@@ -16,6 +16,7 @@ from app.ML.models import load_model
 from app.ML.model_loader import init as init_model
 from app.ML.build_pairs_with_features import build_pairs_with_features
 from app.schemas import NurseWithShiftsSchema, ShiftSchema, NurseBaseSchema
+from pydantic import BaseModel, Field
 
 load_dotenv()
 
@@ -59,6 +60,34 @@ def health():
         "version": "1.0.0",
         "model": "loaded"
     }
+
+# --- Request/response models for core endpoint ---
+class CandidateShift(BaseModel):
+    id: str = Field(..., alias="id")   # shift id
+
+    class Config:
+        allow_population_by_field_name = True
+
+class NurseRef(BaseModel):
+    id: str = Field(..., alias="id")
+    class Config:
+        allow_population_by_field_name = True
+
+class RecommendShiftsRequestCandidates(BaseModel):
+    nurse: NurseRef
+    candidate_shifts: List[CandidateShift]
+
+class RecommendShiftsRequestFromDB(BaseModel):
+    nurse_id: str
+    max_results: Optional[int] = 20
+
+class RecommendationItem(BaseModel):
+    shift_id: str
+    score: float
+
+class RecommendShiftsResponse(BaseModel):
+    nurse_id: str
+    recommendations: List[RecommendationItem]
 
 
 @app.post("/v1/recommendations/shifts")
