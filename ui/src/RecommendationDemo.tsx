@@ -2,7 +2,11 @@ import { useEffect,useState } from "react";
 
 interface Nurse {
     id: string;
-    name: string;
+    first_name: string;
+    last_name: string;
+    location?: string | null;
+    skills?: string | null;
+
 }
 
 interface Recommendation {
@@ -68,7 +72,7 @@ export default function RecommendationDemo() {
         <option value="">Choose nurse </option>
         {nurses.map((n) => (
             <option key={n.id} value={n.id}>
-            {n.name}
+            {n.first_name} {n.last_name}
             </option>
         ))}
         </select>
