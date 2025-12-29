@@ -29,10 +29,14 @@ export default function RecommendationDemo() {
         setLoading(true);
 
         try {
+
+            const TOKEN = "your_api_token_here"; // Replace with your actual token
+            
             const res = await fetch("http://127.0.0.1:8000/v1/recommendations/shifts",{
                 method: "POST",
                 headers: {
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${TOKEN}`
                 },
                 body: JSON.stringify({
                     nurse_id: selectedNurseId,
