@@ -1,4 +1,5 @@
 # PH Suggestion Engine
+This project is a nurse shift recommendation feature that I developed during my internship. The company decided to discontinue the project and gave me permission to continue working on it independently, as I wrote all the code myself.
 
 
 ## Local Database Setup for Testing
