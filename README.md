@@ -1,5 +1,42 @@
 # PH Suggestion Engine
 
+
+## Local Database Setup for Testing
+
+If you want to test the project with a local copy of the database, follow these steps:
+
+1. **Download the database file**  
+   - The SQL dump `dump-phdb-202512291404.sql` is available in the `db` folder. Save it locally.
+
+2. **Create a new database in PostgreSQL**  
+   - Use DBeaver or `psql` to create a database, e.g., `ph_suggestion_engine_test`.
+
+3. **Import the SQL file**  
+   - **Via DBeaver:**  
+     1. Right-click on the new database → **Tools → Restore** or **Execute Script**.  
+     2. Select the `dump-phdb-202512291404.sql` file.  
+     3. Run the import.  
+   - **Via terminal:**  
+     ```bash
+     psql -U <db_user> -d ph_suggestion_engine_test -f path/to/ph_suggestion_engine.sql
+     ```
+     Replace `<db_user>` with your PostgreSQL username and `path/to/` with the SQL file path.
+
+4. **Update `.env`**  
+   - Create a `.env` file in the backend with the database credentials:  
+     ```env
+     DB_USER=<your_user>
+     DB_PASSWORD=<your_password>
+     DB_HOST=localhost
+     DB_PORT=5432
+     DB_NAME=ph_suggestion_engine_test
+     ```
+
+5. **Start the backend server**  
+   ```bash
+   uvicorn app.main:app --reload
+
+
 ## Overview
 This project is a machine learning-powered recommendation engine for nurse shift assignments. It uses nurse and shift data to generate ranked shift recommendations using a LightGBM classifier. FastAPI serves as the backend for both production and internal/dev endpoints.
 
