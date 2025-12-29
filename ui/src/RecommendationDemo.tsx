@@ -14,11 +14,23 @@ interface Recommendation {
     score: number;
 }
 
+interface Shift {
+    id:string;
+    unique_shift_id: string;
+    hospital_name: string;
+    description: string;
+    shift_start_date: string;
+    shift_end_date: string;
+    location: string;
+    shift_type: string;
+}
+
 
 export default function RecommendationDemo() {
     const [nurses,setNurses] = useState<Nurse[]>([])
     const [selectedNurseId,setSelectedNurseId] = useState<string>("")
     const [recommendations,setRecommendations] = useState<Recommendation[]>([])
+    const [shifts,setShifts] = useState<Shift[]>([])
     const [loading,setLoading] = useState<boolean>(false)
 
     useEffect(() => {
@@ -28,13 +40,20 @@ export default function RecommendationDemo() {
         .catch((err) => console.error("Error fetching nurses",err))
     }, [])
 
+    useEffect(() => {
+    fetch("http://127.0.0.1:8000/internal/shifts")
+        .then(res => res.json())
+        .then(data => setShifts(data))
+        .catch(err => console.error("Error fetching shifts", err));
+        }, []);
+
     const generate = async () => {
         if(!selectedNurseId) return;
         setLoading(true);
 
         try {
 
-            const TOKEN = "your_api_token_here"; // Replace with your actual token
+            const TOKEN = "<your_api_token_here>"; // Replace with your actual token
             
             const res = await fetch("http://127.0.0.1:8000/v1/recommendations/shifts",{
                 method: "POST",
@@ -89,12 +108,20 @@ export default function RecommendationDemo() {
       {/* Results */}
         <div className="space-y-2 mt-4">
         {recommendations.length === 0 && !loading && <p>No recommendations yet</p>}
-        {recommendations.map((r) => (
-            <div key={r.shift_id} className="border p-3 rounded flex justify-between">
-            <span>{r.shift_id}</span>
+            {recommendations.map((r) => {
+        const shift = shifts.find(s => s.id === r.shift_id);
+        if (!shift) return null; 
+            return (
+        <div key={r.shift_id} className="border p-3 rounded flex justify-between">
+            <span>
+                [{shift.unique_shift_id}] {shift.hospital_name} - {shift.shift_type} (
+                {new Date(shift.shift_start_date).toLocaleString()} - {new Date(shift.shift_end_date).toLocaleString()}
+                )
+            </span>
             <span className="font-bold text-green-600">{(r.score * 100).toFixed(1)}%</span>
-            </div>
-        ))}
+        </div>
+                );
+            })}
         </div>
     </div>
     );
