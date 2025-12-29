@@ -7,6 +7,7 @@ import os
 import jwt
 from dotenv import load_dotenv
 import pandas as pd
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.database import get_db
 from app.models.nurse import Nurse
@@ -21,6 +22,19 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 app = FastAPI(title="PH Suggestion Engine")
+
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",  
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    )
 
 # =========================
 # Startup event: init ML model
