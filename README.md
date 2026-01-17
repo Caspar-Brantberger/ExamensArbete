@@ -1,5 +1,6 @@
 # PH Suggestion Engine
 This project is a nurse shift recommendation feature that I developed during my internship. The company decided to discontinue the project and gave me permission to continue working on it independently, as I wrote all the code myself.
+"This is a nurse shift recommendation engine I built. It uses a machine learning model to score and rank shifts based on each nurse’s profile, like experience, specialization, and location. The top-ranked shifts are the ones that best match the nurse, and all requests are securely authenticated using JWT tokens."
 
 
 ## Local Database Setup for Testing
@@ -251,3 +252,29 @@ This README covers:
     Unit tests
 
     Notes on synthetic data
+
+    Frontend Setup
+
+The frontend is a React + TypeScript application.
+
+Go to the ui folder:
+
+cd ui
+
+
+Install dependencies:
+
+npm install
+
+
+Start the development server:
+
+npm run dev
+
+
+Open http://localhost:5173
+ in your browser.
+
+Important: Replace <your_api_token_here> in the frontend code with a valid JWT token to fetch recommendations. You can generate it using the backend script:
+
+python -m app.scripts.generate_mock_token

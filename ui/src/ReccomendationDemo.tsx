@@ -83,6 +83,15 @@ export default function RecommendationDemo() {
             <div className="max-w-xl mx-auto p-6 space-y-4">
         <h1 className="text-xl font-bold">Shift recommendations</h1>
 
+        <div className="bg-gray-100 p-4 rounded space-y-2">
+  <p className="font-semibold">Demo: ML-powered nurse shift recommendations</p>
+  <p>This demo shows top shift recommendations for nurses based on a LightGBM model.</p>
+  <p><span className="font-bold">Note:</span> All data is synthetic/fake, generated for demo purposes.</p>
+  <p>Replace <code>&lt;your_api_token_here&gt;</code> with a valid JWT token to fetch recommendations. You can generate it with the backend script:
+  python -m app.scripts.generate_mock_token </p>
+  <p>The program is functional but real predictions require real data.</p>
+</div>
+
       {/* Dropdown */}
         <select
         className="border p-2 w-full rounded"
@@ -119,11 +128,17 @@ export default function RecommendationDemo() {
                 {new Date(shift.shift_start_date).toLocaleString()} - {new Date(shift.shift_end_date).toLocaleString()}
                 )
             </span>
-            <span className="font-bold text-green-600">{(r.score * 100).toFixed(1)}%</span>
+            <div className="score-container">
+        <div className="score-bar" style={{ width: `${r.score * 100}%` }}></div>
+        <span className="score-text">{(r.score * 100).toFixed(1)}%</span>
+        </div>
         </div>
                 );
             })}
         </div>
+        <p className="text-gray-500 text-sm mt-4">
+    Disclaimer: This project was done with permission from the company I made this for due to them going bankrupt.
+    </p>
     </div>
     );
 }
