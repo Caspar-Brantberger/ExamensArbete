@@ -1,4 +1,5 @@
-import RecommendationDemo from "./RecommendationDemo";
+import React from 'react';
+import RecommendationDemo from './ReccomendationDemo';
 
 function App() {
   return (
